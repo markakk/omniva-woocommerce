@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+### Fixed
+- fixed an error occurring during customer registration
+
+### Improved
+- created an error display in the admin area when the plugin cannot work
+
 ## [1.15.6]
 ### Fixed
 - fixed set of API type
