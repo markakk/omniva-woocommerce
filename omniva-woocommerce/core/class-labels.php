@@ -85,6 +85,90 @@ class OmnivaLt_Labels
     exit;
   }
 
+  /**
+   * Automatically register an Omniva label when an order changes to the configured status.
+   * Hooked to the configured "woocommerce_order_status_..." action when enabled in settings.
+   */
+  public static function auto_generate_label( $order_id, $order = null )
+  {
+    $settings = OmnivaLt_Core::get_settings();
+
+    if ( empty($settings['auto_generate_labels']) || $settings['auto_generate_labels'] !== 'yes' ) {
+      return;
+    }
+
+    // Optionally generate labels only on automatic status changes (e.g. after payment), not on manual admin changes
+    $only_on_payment = ( isset($settings['auto_generate_only_payment']) && $settings['auto_generate_only_payment'] === 'yes' );
+    if ( $only_on_payment ) {
+      if ( is_admin() && ! wp_doing_cron() && ! defined('DOING_AJAX') ) {
+        OmnivaLt_Debug::log('order', 'Auto label: skipping order #' . $order_id . ' - manual status change in admin');
+        return;
+      }
+      if ( is_user_logged_in() && current_user_can('manage_woocommerce') && ! did_action('woocommerce_payment_complete') ) {
+        OmnivaLt_Debug::log('order', 'Auto label: skipping order #' . $order_id . ' - admin manual change');
+        return;
+      }
+    }
+
+    if ( ! OmnivaLt_Omniva_Order::have_omniva_shipping($order_id) ) {
+      return;
+    }
+
+    $existing_barcodes = OmnivaLt_Omniva_Order::get_barcodes($order_id);
+    if ( ! empty($existing_barcodes) ) {
+      OmnivaLt_Debug::log('order', 'Auto label: labels already exist for order #' . $order_id . ' (' . implode(', ', (array) $existing_barcodes) . ')');
+      return;
+    }
+
+    OmnivaLt_Debug::log('order', 'Auto label: generating label for order #' . $order_id);
+
+    $labels = new self();
+    $barcodes = $labels->register_order_label($order_id);
+
+    if ( ! empty($barcodes) ) {
+      OmnivaLt_Debug::log('order', 'Auto label: generated for order #' . $order_id . ': ' . implode(', ', (array) $barcodes));
+    } else {
+      OmnivaLt_Debug::log('error', 'Auto label: failed to generate label for order #' . $order_id);
+    }
+  }
+
+  /**
+   * Register a label for a single order, handling the same API type setup as print_labels().
+   * Returns an array of barcodes (empty on failure).
+   */
+  public function register_order_label( $order_id )
+  {
+    $order = OmnivaLt_Wc_Order::get_data($order_id, array('shipment', 'shipping', 'billing'));
+    if ( ! $order ) {
+      return array();
+    }
+
+    $send_method = $order->shipment->method;
+    if ( ! in_array($send_method, $this->send_methods, true) && ! in_array($send_method, $this->send_methods_international, true) ) {
+      return array();
+    }
+
+    $this->is_international = false;
+    if ( in_array($send_method, $this->send_methods_international, true) ) {
+      $this->is_international = true;
+      $this->omnivalt_api->change_api_type('international');
+    }
+    if ( in_array($order->shipment->country, $this->force_domestic_to_international_countries, true) ) {
+      $this->is_international = true;
+      $this->omnivalt_api->convert_domestic_order_to_international();
+    }
+    if ( ! $this->is_international && $this->omnivalt_api->get_api_type() == 'international' ) {
+      $this->omnivalt_api->change_api_type($this->omnivalt_configs['api']['type']);
+    }
+
+    $barcodes = OmnivaLt_Omniva_Order::get_barcodes($order->id);
+    if ( empty($barcodes) ) {
+      $barcodes = $this->register_label($order);
+    }
+
+    return is_array($barcodes) ? $barcodes : array();
+  }
+
   private function register_label( $order )
   {
     OmnivaLt_Omniva_Order::set_error($order->id, '');
