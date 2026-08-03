@@ -190,6 +190,12 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _Tools_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(4);
 function _typeof(obj) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (obj) { return typeof obj; } : function (obj) { return obj && "function" == typeof Symbol && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }, _typeof(obj); }
+function _slicedToArray(arr, i) { return _arrayWithHoles(arr) || _iterableToArrayLimit(arr, i) || _unsupportedIterableToArray(arr, i) || _nonIterableRest(); }
+function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
+function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i]; return arr2; }
+function _iterableToArrayLimit(arr, i) { var _i = null == arr ? null : "undefined" != typeof Symbol && arr[Symbol.iterator] || arr["@@iterator"]; if (null != _i) { var _s, _e, _x, _r, _arr = [], _n = !0, _d = !1; try { if (_x = (_i = _i.call(arr)).next, 0 === i) { if (Object(_i) !== _i) return; _n = !1; } else for (; !(_n = (_s = _x.call(_i)).done) && (_arr.push(_s.value), _arr.length !== i); _n = !0); } catch (err) { _d = !0, _e = err; } finally { try { if (!_n && null != _i["return"] && (_r = _i["return"](), Object(_r) !== _r)) return; } finally { if (_d) throw _e; } } return _arr; } }
+function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, _toPropertyKey(descriptor.key), descriptor); } }
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); Object.defineProperty(Constructor, "prototype", { writable: false }); return Constructor; }
@@ -212,17 +218,25 @@ var DOMManipulator = /*#__PURE__*/function () {
     this.prefix = TMJS.prefix;
     this._searchTimeoutId = null;
     this._lastSearchTerm = '';
+    // consumed once by the next 'list-updated' handling
+    this._forceScrollTop = false;
     this.containerParent = null;
     this.modalParent = null;
     this.isModal = true;
     this.hideContainer = true;
     this.hideSelectBtn = false;
+
+    // 'map' (default, modal with leaflet) or 'dropdown' (inline select2-like).
+    this.displayMode = 'map';
     this.cssThemeRule = '';
     this.UI = {
       container: null,
       modal: null,
       map: null,
-      overlay: null
+      overlay: null,
+      // dropdown mode
+      dropdownPanel: null,
+      dropdownTrigger: null
     };
     this.registerSubs();
   }
@@ -231,26 +245,44 @@ var DOMManipulator = /*#__PURE__*/function () {
     value: function registerSubs() {
       var _this = this;
       this.TMJS.sub('terminal-selected', function (data) {
-        _this.UI.container.querySelector('.tmjs-selected-terminal').innerText = data.name;
+        var el = _this.UI.container.querySelector('.tmjs-selected-terminal');
+        if (_this.displayMode === 'dropdown') {
+          el.innerHTML = _this._renderSelectedTerminalLabel(data);
+          _this._renderDropdownInfo(data);
+          // Auto-close dropdown when a terminal is selected via the list.
+          _this.closeDropdown();
+        } else {
+          el.innerText = data.name;
+        }
       });
       this.TMJS.sub('terminal-selected-text', function (data) {
         _this.UI.container.querySelector('.tmjs-selected-terminal').innerText = data.text;
       });
       this.TMJS.sub('geolocation', function (coords) {
-        _this.UI.modal.querySelector('.tmjs-search-result').innerText = "Lat: ".concat(coords.lat, " Long: ").concat(coords.lng);
+        var sr = _this._searchResultEl();
+        if (sr) sr.innerText = "Lat: ".concat(coords.lat, " Long: ").concat(coords.lng);
       });
       this.TMJS.sub('add-search-loader', function (data) {
-        _this.UI.modal.querySelector('.tmjs-search-result').innerHTML = "<div id=\"tmjs-terminals-loader\" class=\"tmjs-loading\"></div>";
+        var sr = _this._searchResultEl();
+        if (sr) sr.innerHTML = "<div id=\"tmjs-terminals-loader\" class=\"tmjs-loading\"></div>";
       });
       this.TMJS.sub('reset-search-result', function (data) {
-        _this.UI.modal.querySelector('.tmjs-search-result').innerText = '';
+        var sr = _this._searchResultEl();
+        if (sr) sr.innerText = '';
       });
       this.TMJS.sub('search-result', function (data) {
-        _this.UI.modal.querySelector('.tmjs-search-result').innerText = data.address;
+        var sr = _this._searchResultEl();
+        if (sr) sr.innerText = data.address;
         console.info('GEOCODE RESPONSE:', data);
       });
       this.TMJS.sub('list-updated', function (data) {
-        _this.showSelected();
+        if (_this._forceScrollTop) {
+          _this._forceScrollTop = false;
+          _this.showSelected(false);
+          _this.scrollListToTop();
+        } else {
+          _this.showSelected();
+        }
       });
       this.TMJS.sub('close-map-modal', function (data) {
         _this.closeModal();
@@ -258,6 +290,95 @@ var DOMManipulator = /*#__PURE__*/function () {
       this.TMJS.sub('open-map-modal', function (data) {
         _this.openModal();
       });
+    }
+
+    /**
+     * Returns the search-result info element (works in both map and dropdown modes).
+     */
+  }, {
+    key: "_searchResultEl",
+    value: function _searchResultEl() {
+      if (this.displayMode === 'dropdown') {
+        return this.UI.dropdownPanel ? this.UI.dropdownPanel.querySelector('.tmjs-search-result') : null;
+      }
+      return this.UI.modal ? this.UI.modal.querySelector('.tmjs-search-result') : null;
+    }
+
+    /**
+     * Escape HTML special chars to safely interpolate user-supplied text.
+     */
+  }, {
+    key: "_escapeHtml",
+    value: function _escapeHtml(str) {
+      if (str === null || typeof str === 'undefined') return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    /**
+     * Build two-line label for the dropdown trigger when a terminal is selected.
+     * - If terminal has a name: line 1 = name, line 2 = address (muted highlight color).
+     * - If no name: line 1 = address, line 2 = full city group string.
+     * Falls back to parseLocationName if provided and no name is set.
+     */
+  }, {
+    key: "_renderSelectedTerminalLabel",
+    value: function _renderSelectedTerminalLabel(loc) {
+      if (!loc) return '';
+      var name = (loc.name || '').toString().trim();
+      var address = (loc.address || '').toString().trim();
+      var city = (loc.city || '').toString().trim();
+      var primary = '';
+      var secondary = '';
+      if (name) {
+        primary = name;
+        // Combine address + city for context (e.g. "Ūdrijos g. 1, Alytaus m., Alytaus m. sav., Alytaus apskr.")
+        secondary = [address, city].filter(function (s) {
+          return s && s.length;
+        }).join(', ');
+      } else if (typeof this.TMJS.parseLocationName === 'function') {
+        // honor custom name parser when no native name is present
+        var parsed = (this.TMJS.parseLocationName(loc) || '').toString().trim();
+        if (parsed) {
+          primary = parsed;
+          secondary = city;
+        }
+      }
+      if (!primary) {
+        primary = address || city;
+        secondary = primary === address ? city : '';
+      }
+      var html = "<span class=\"tmjs-selected-primary\">".concat(this._escapeHtml(primary), "</span>");
+      if (secondary && secondary !== primary) {
+        html += "<span class=\"tmjs-selected-secondary\">".concat(this._escapeHtml(secondary), "</span>");
+      }
+      return html;
+    }
+
+    /**
+     * Render the info box attached below the dropdown trigger when a terminal is
+     * selected. Uses parseLocationComment if provided, otherwise loc.comment.
+     * Comment is interpreted as HTML (Omniva-style comments may contain <br>).
+     */
+  }, {
+    key: "_renderDropdownInfo",
+    value: function _renderDropdownInfo(loc) {
+      if (!this.UI.dropdownInfo) return;
+      var comment = '';
+      if (loc) {
+        if (typeof this.TMJS.parseLocationComment === 'function') {
+          comment = this.TMJS.parseLocationComment(loc) || '';
+        } else if (loc.comment) {
+          comment = loc.comment;
+        }
+      }
+      comment = (comment || '').toString().trim();
+      if (!comment) {
+        this.UI.dropdownInfo.innerHTML = '';
+        this.UI.dropdownInfo.classList.add('tmjs-hidden');
+        return;
+      }
+      this.UI.dropdownInfo.innerHTML = comment;
+      this.UI.dropdownInfo.classList.remove('tmjs-hidden');
     }
   }, {
     key: "setContainerParent",
@@ -344,6 +465,10 @@ var DOMManipulator = /*#__PURE__*/function () {
   }, {
     key: "addContainer",
     value: function addContainer(id, strings) {
+      if (this.displayMode === 'dropdown') {
+        this.addDropdownContainer(id, strings);
+        return;
+      }
       var template = "\n    <div class=\"tmjs-selected-terminal\" data-tmjs-string=\"select_pickup_point\">".concat(strings.select_pickup_point, "</div>\n    <a href=\"#tmjsmodal\" class=\"tmjs-open-modal-btn\" data-tmjs-string=\"modal_open_btn\">").concat(strings.modal_open_btn, "</a>\n    ");
       var container = this.createElement('div', {
         classList: ['tmjs-container', this.cssThemeRule, this.hideContainer ? 'tmjs-hidden' : ''],
@@ -355,11 +480,46 @@ var DOMManipulator = /*#__PURE__*/function () {
       this.addModal(id + '_modal', strings);
       this.attachListeners();
     }
+
+    /**
+     * Builds the inline dropdown (select2-like) container. No modal/map is rendered.
+     */
+  }, {
+    key: "addDropdownContainer",
+    value: function addDropdownContainer(id, strings) {
+      // In dropdown mode the row click selects the terminal directly, so the
+      // per-row "select" button is redundant and gets hidden by default.
+      this.hideSelectBtn = true;
+      var template = "\n      <div class=\"tmjs-dropdown\">\n        <div class=\"tmjs-dropdown-trigger\" tabindex=\"0\">\n          <span class=\"tmjs-selected-terminal\" data-tmjs-string=\"dropdown_placeholder\">".concat(strings.dropdown_placeholder, "</span>\n          <span class=\"tmjs-dropdown-arrow\"></span>\n        </div>\n        <div class=\"tmjs-dropdown-info tmjs-hidden\"></div>\n        <div class=\"tmjs-dropdown-panel tmjs-hidden\">\n          <div class=\"tmjs-dropdown-search tmjs-d-block\">\n            <input type=\"text\" class=\"tmjs-search-input\" placeholder=\"").concat(strings.dropdown_search_placeholder, "\" data-tmjs-string-attr=\"placeholder|dropdown_search_placeholder\">\n            <a href=\"#findNearest\" class=\"tmjs-search-btn\" title=\"").concat(strings.find_nearest_btn, "\"><img src=\"").concat(this.TMJS.imagePath, "search.svg\" width=\"18\"></a>\n          </div>\n          <div class=\"tmjs-d-block tmjs-pt-1\">\n            <a href=\"#useMyLocation\" class=\"tmjs-geolocation-btn\"><img src=\"").concat(this.TMJS.imagePath, "gps.svg\" width=\"15\"><span data-tmjs-string=\"geolocation_btn\">").concat(strings.geolocation_btn, "</span></a>\n          </div>\n          <div class=\"tmjs-search-result tmjs-d-block tmjs-pt-1\"></div>\n          <ul class=\"tmjs-terminal-list tmjs-dropdown-list\"></ul>\n        </div>\n      </div>\n    ");
+      var container = this.createElement('div', {
+        classList: ['tmjs-container', 'tmjs-dropdown-mode', this.cssThemeRule, this.hideContainer ? 'tmjs-hidden' : ''],
+        innerHTML: template
+      });
+      container.id = id;
+      this.UI.container = container;
+      this.UI.dropdownTrigger = container.querySelector('.tmjs-dropdown-trigger');
+      this.UI.dropdownPanel = container.querySelector('.tmjs-dropdown-panel');
+      this.UI.dropdownInfo = container.querySelector('.tmjs-dropdown-info');
+      this.UI.terminalList = container.querySelector('.tmjs-terminal-list');
+      this.attachContainerToParent(container, this.containerParent);
+      this.attachDropdownListeners();
+    }
   }, {
     key: "updateString",
     value: function updateString(stringName, newValue) {
       document.querySelectorAll("[data-tmjs-string=\"".concat(stringName, "\"]")).forEach(function (el) {
         return el.innerText = newValue;
+      });
+      document.querySelectorAll("[data-tmjs-string-attr]").forEach(function (el) {
+        var spec = el.getAttribute('data-tmjs-string-attr');
+        if (!spec) return;
+        var _spec$split = spec.split('|'),
+          _spec$split2 = _slicedToArray(_spec$split, 2),
+          attrName = _spec$split2[0],
+          key = _spec$split2[1];
+        if (attrName && key && key === stringName) {
+          el.setAttribute(attrName, newValue);
+        }
       });
     }
   }, {
@@ -433,6 +593,292 @@ var DOMManipulator = /*#__PURE__*/function () {
         _this2.useGeolocation();
       });
     }
+
+    /**
+     * Attach event listeners for dropdown mode UI.
+     */
+  }, {
+    key: "attachDropdownListeners",
+    value: function attachDropdownListeners() {
+      var _this3 = this;
+      var panel = this.UI.dropdownPanel;
+      var trigger = this.UI.dropdownTrigger;
+      var searchInput = panel.querySelector('.tmjs-search-input');
+      var searchBtn = panel.querySelector('.tmjs-search-btn');
+      var geoBtn = panel.querySelector('.tmjs-geolocation-btn');
+      trigger.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (panel.classList.contains('tmjs-hidden')) {
+          _this3.openDropdown();
+        } else {
+          _this3.closeDropdown();
+        }
+      });
+      trigger.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          _this3.openDropdown();
+          return;
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          _this3.openDropdown();
+          // highlight the first item once the panel is open
+          setTimeout(function () {
+            return _this3._moveDropdownHighlight(1);
+          }, 0);
+          return;
+        }
+        if (e.key === 'Escape') {
+          _this3.closeDropdown();
+        }
+      });
+      panel.addEventListener('click', function (e) {
+        // prevent panel clicks from bubbling to outside-click handler
+        e.stopPropagation();
+      });
+      panel.querySelector('.tmjs-terminal-list').addEventListener('click', function (event) {
+        _this3.handleTerminalListEvents(event, _this3.findTerminalElement(event.target));
+      });
+
+      // Mouse hover clears keyboard highlight to avoid double indicators.
+      panel.querySelector('.tmjs-terminal-list').addEventListener('mousemove', function () {
+        _this3._clearDropdownHighlight();
+      });
+      searchInput.addEventListener('keydown', function (e) {
+        // Keyboard navigation through the list.
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          _this3._moveDropdownHighlight(1);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          _this3._moveDropdownHighlight(-1);
+          return;
+        }
+        if (e.key === 'Home') {
+          e.preventDefault();
+          _this3._moveDropdownHighlightTo('first');
+          return;
+        }
+        if (e.key === 'End') {
+          e.preventDefault();
+          _this3._moveDropdownHighlightTo('last');
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          _this3.closeDropdown();
+          if (_this3.UI.dropdownTrigger) _this3.UI.dropdownTrigger.focus();
+          return;
+        }
+        if (e.key === 'Enter') {
+          // If user has highlighted an item with arrows, pressing Enter selects it.
+          var highlighted = _this3._getHighlightedItem();
+          if (highlighted) {
+            e.preventDefault();
+            _this3.setActiveTerminal(highlighted.dataset.id, false);
+            var selected = _this3.TMJS.map.getActiveLocation();
+            if (selected) {
+              _this3.TMJS.publish('terminal-selected', selected);
+            }
+            return;
+          }
+          // Otherwise fall through to keyup handler which triggers geocoding.
+        }
+      });
+
+      searchInput.addEventListener('keyup', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // ignore navigation keys here (handled in keydown)
+        if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].indexOf(e.key) !== -1) {
+          return;
+        }
+        if (e.keyCode == 13) {
+          // Enter only triggers geocoding when nothing was highlighted.
+          if (!_this3._getHighlightedItem()) {
+            _this3.searchNearest(e.target.value);
+          }
+          return;
+        }
+        // Live local text filter.
+        _this3._clearDropdownHighlight();
+        _this3.filterDropdownList(e.target.value);
+      });
+      searchBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        _this3.searchNearest(searchInput.value);
+      });
+      geoBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        _this3.useGeolocation();
+      });
+
+      // Outside-click closes the dropdown.
+      this._outsideClickHandler = function (e) {
+        if (!_this3.UI.container.contains(e.target)) {
+          _this3.closeDropdown();
+        }
+      };
+      document.addEventListener('click', this._outsideClickHandler);
+    }
+  }, {
+    key: "openDropdown",
+    value: function openDropdown() {
+      if (!this.UI.dropdownPanel) return this;
+      this.UI.dropdownPanel.classList.remove('tmjs-hidden');
+      this.UI.container.classList.add('tmjs-dropdown-open');
+      this._clearDropdownHighlight();
+      this.TMJS.publish('modal-opened', true);
+      // focus the search input for convenience
+      var input = this.UI.dropdownPanel.querySelector('.tmjs-search-input');
+      if (input) {
+        setTimeout(function () {
+          return input.focus();
+        }, 0);
+      }
+      return this;
+    }
+  }, {
+    key: "closeDropdown",
+    value: function closeDropdown() {
+      if (!this.UI.dropdownPanel) return this;
+      if (this.UI.dropdownPanel.classList.contains('tmjs-hidden')) return this;
+      this.UI.dropdownPanel.classList.add('tmjs-hidden');
+      this.UI.container.classList.remove('tmjs-dropdown-open');
+      this.TMJS.publish('modal-closed', true);
+      return this;
+    }
+
+    /**
+     * Local case-insensitive filter over rendered terminal list.
+     * Hides non-matching items and city headers that have no visible items.
+     */
+  }, {
+    key: "filterDropdownList",
+    value: function filterDropdownList(searchTerm) {
+      if (!this.UI.terminalList) return;
+      var term = (searchTerm || '').trim().toLowerCase();
+      var items = this.UI.terminalList.children;
+      var currentCityEl = null;
+      var currentCityHasMatch = false;
+      var totalMatches = 0;
+      var finalizeCity = function finalizeCity() {
+        if (currentCityEl) {
+          currentCityEl.classList.toggle('tmjs-filtered-out', !currentCityHasMatch);
+        }
+      };
+      for (var i = 0; i < items.length; i++) {
+        var el = items[i];
+        if (el.classList.contains('tmjs-city')) {
+          finalizeCity();
+          currentCityEl = el;
+          currentCityHasMatch = false;
+          continue;
+        }
+        if (term === '') {
+          el.classList.remove('tmjs-filtered-out');
+          currentCityHasMatch = true;
+          totalMatches++;
+          continue;
+        }
+        var text = el.textContent.toLowerCase();
+        var match = text.indexOf(term) !== -1;
+        el.classList.toggle('tmjs-filtered-out', !match);
+        if (match) {
+          currentCityHasMatch = true;
+          totalMatches++;
+        }
+      }
+      finalizeCity();
+      var sr = this._searchResultEl();
+      if (sr) {
+        if (term !== '' && totalMatches === 0) {
+          sr.innerText = this.TMJS.strings.no_terminals_match;
+        } else {
+          sr.innerText = '';
+        }
+      }
+    }
+
+    /**
+     * Returns the array of currently visible (not filtered out) terminal <li> elements.
+     */
+  }, {
+    key: "_getVisibleDropdownItems",
+    value: function _getVisibleDropdownItems() {
+      if (!this.UI.terminalList) return [];
+      return Array.from(this.UI.terminalList.querySelectorAll('li.tmjs-terminal:not(.tmjs-filtered-out)'));
+    }
+  }, {
+    key: "_getHighlightedItem",
+    value: function _getHighlightedItem() {
+      if (!this.UI.terminalList) return null;
+      return this.UI.terminalList.querySelector('li.tmjs-terminal.tmjs-highlight');
+    }
+  }, {
+    key: "_clearDropdownHighlight",
+    value: function _clearDropdownHighlight() {
+      if (!this.UI.terminalList) return;
+      var cur = this._getHighlightedItem();
+      if (cur) cur.classList.remove('tmjs-highlight');
+    }
+  }, {
+    key: "_setHighlightedItem",
+    value: function _setHighlightedItem(item) {
+      this._clearDropdownHighlight();
+      if (!item) return;
+      item.classList.add('tmjs-highlight');
+      item.scrollIntoView({
+        block: 'nearest'
+      });
+    }
+
+    /**
+     * Move the keyboard highlight by `delta` positions among visible items.
+     * Wraps around at the ends. Opens the dropdown if not already open.
+     * If no item is highlighted yet, starts from the currently selected
+     * (active) terminal when present, otherwise from the first/last item.
+     */
+  }, {
+    key: "_moveDropdownHighlight",
+    value: function _moveDropdownHighlight(delta) {
+      if (this.UI.dropdownPanel && this.UI.dropdownPanel.classList.contains('tmjs-hidden')) {
+        this.openDropdown();
+      }
+      var items = this._getVisibleDropdownItems();
+      if (!items.length) return;
+      var cur = this._getHighlightedItem();
+      var idx = cur ? items.indexOf(cur) : -1;
+      if (idx === -1) {
+        // Use currently active terminal as the starting point if it is visible.
+        var active = items.find(function (li) {
+          return li.classList.contains('tmjs-active');
+        });
+        if (active) {
+          idx = items.indexOf(active);
+          // Step away from the active item by `delta` so the user actually moves.
+          idx = (idx + delta + items.length) % items.length;
+        } else {
+          idx = delta > 0 ? 0 : items.length - 1;
+        }
+      } else {
+        idx = (idx + delta + items.length) % items.length;
+      }
+      this._setHighlightedItem(items[idx]);
+    }
+  }, {
+    key: "_moveDropdownHighlightTo",
+    value: function _moveDropdownHighlightTo(position) {
+      var items = this._getVisibleDropdownItems();
+      if (!items.length) return;
+      var item = position === 'last' ? items[items.length - 1] : items[0];
+      this._setHighlightedItem(item);
+    }
   }, {
     key: "openModal",
     value: function openModal() {
@@ -495,7 +941,8 @@ var DOMManipulator = /*#__PURE__*/function () {
   }, {
     key: "geoLocationError",
     value: function geoLocationError() {
-      this.UI.modal.querySelector('.tmjs-search-result').innerText = this.TMJS.strings.geolocation_not_supported;
+      var sr = this._searchResultEl();
+      if (sr) sr.innerText = this.TMJS.strings.geolocation_not_supported;
       console.log('wasnt able to retrieve position');
     }
 
@@ -517,8 +964,16 @@ var DOMManipulator = /*#__PURE__*/function () {
       if (event.target.classList.contains('tmjs-select-btn')) {
         console.log('Trying to select terminal:', data.dataset.id);
         this.TMJS.publish('terminal-selected', this.TMJS.map.getActiveLocation());
-        // seting scrollIntoView as false since we already see it.
-        //this.setActiveTerminal(target.dataset.id, false);
+        return;
+      }
+
+      // In dropdown mode, clicking a row immediately selects the terminal.
+      if (this.displayMode === 'dropdown') {
+        this.setActiveTerminal(data.dataset.id, false);
+        var selected = this.TMJS.map.getActiveLocation();
+        if (selected) {
+          this.TMJS.publish('terminal-selected', selected);
+        }
         return;
       }
 
@@ -531,7 +986,7 @@ var DOMManipulator = /*#__PURE__*/function () {
   }, {
     key: "renderTerminalList",
     value: function renderTerminalList(terminals) {
-      var _this3 = this;
+      var _this4 = this;
       var force = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
       var listHTML = [];
       var city = false;
@@ -541,33 +996,33 @@ var DOMManipulator = /*#__PURE__*/function () {
       terminals.forEach(function (loc) {
         if (city !== loc.city.toLowerCase()) {
           city = loc.city.toLowerCase();
-          var cityEl = _this3.createElement('li', {
+          var cityEl = _this4.createElement('li', {
             classList: ['tmjs-city']
           });
           cityEl.innerText = loc.city.toLocaleUpperCase();
           listHTML.push(cityEl);
         }
-        var selectBtnHidden = _this3.hideSelectBtn ? 'tmjs-hidden' : '';
+        var selectBtnHidden = _this4.hideSelectBtn ? 'tmjs-hidden' : '';
         var name = loc.name == null ? '' : "".concat(loc.name, ", ");
         var locationName = "".concat(name).concat(loc.address);
-        if (typeof _this3.TMJS.parseLocationName === 'function') {
-          locationName = _this3.TMJS.parseLocationName(loc);
+        if (typeof _this4.TMJS.parseLocationName === 'function') {
+          locationName = _this4.TMJS.parseLocationName(loc);
         }
         var locationComment = loc['comment'] || null;
-        if (typeof _this3.TMJS.parseLocationComment === 'function') {
-          locationComment = _this3.TMJS.parseLocationComment(loc);
+        if (typeof _this4.TMJS.parseLocationComment === 'function') {
+          locationComment = _this4.TMJS.parseLocationComment(loc);
         }
         var template = "<span class=\"tmjs-terminal-name\">".concat(locationName);
         if (typeof loc.distance != 'undefined' && loc.distance !== null) {
-          template += "<span class=\"tmjs-terminal-distance\"><img src=\"".concat(_this3.TMJS.imagePath, "gps.svg\" width=\"13\">").concat(loc.distance.toFixed(2), " km.</span>");
+          template += "<span class=\"tmjs-terminal-distance\"><img src=\"".concat(_this4.TMJS.imagePath, "gps.svg\" width=\"13\">").concat(loc.distance.toFixed(2), " km.</span>");
         }
         template += "</span><div class=\"tmjs-terminal-info\"><p class=\"tmjs-terminal-comment\">";
         if (locationComment) {
-          template += "<img src=\"".concat(_this3.TMJS.imagePath, "info.svg\" width=\"17\" style=\"margin-bottom:-1px; padding-right:5px;\">").concat(locationComment);
+          template += "<span class=\"tmjs-info-icon\" style=\"--tmjs-info-icon-url:url('".concat(_this4.TMJS.imagePath, "info.svg')\"></span>").concat(locationComment);
         }
-        template += "</p><a href=\"#terminalSelected\" class=\"tmjs-select-btn ".concat(selectBtnHidden, "\" data-tmjs-string=\"select_btn\">").concat(_this3.TMJS.strings.select_btn, "</a>\n      </div>\n      ");
+        template += "</p><a href=\"#terminalSelected\" class=\"tmjs-select-btn ".concat(selectBtnHidden, "\" data-tmjs-string=\"select_btn\">").concat(_this4.TMJS.strings.select_btn, "</a>\n      </div>\n      ");
         /* check if we allready have html object, otherwise create new one */
-        var li = Object.prototype.toString.call(loc._li) == '[object HTMLLIElement]' && !force ? loc._li : _this3.createElement('li', {
+        var li = Object.prototype.toString.call(loc._li) == '[object HTMLLIElement]' && !force ? loc._li : _this4.createElement('li', {
           classList: ['tmjs-terminal'],
           innerHTML: template
         });
@@ -608,7 +1063,7 @@ var DOMManipulator = /*#__PURE__*/function () {
       if (scrollIntoView) {
         this.scrollIntoView(location._li);
       }
-      if (!this.UI.modal.classList.contains('tmjs-hidden')) {
+      if (this.UI.modal && !this.UI.modal.classList.contains('tmjs-hidden')) {
         this.TMJS.map.zoomToMarker(location._marker);
       }
       this.TMJS.map.setActiveLocation(location);
@@ -621,6 +1076,13 @@ var DOMManipulator = /*#__PURE__*/function () {
         block: 'nearest',
         inline: 'start'
       });
+    }
+  }, {
+    key: "scrollListToTop",
+    value: function scrollListToTop() {
+      if (this.UI.terminalList) {
+        this.UI.terminalList.scrollTop = 0;
+      }
     }
   }, {
     key: "searchNearestDebounce",
@@ -641,11 +1103,15 @@ var DOMManipulator = /*#__PURE__*/function () {
       this.renderTerminalList(this.TMJS.map.resetDistance(), true);
       this.TMJS.map.removeReferencePosition();
       this.TMJS.publish('reset-search-result');
+      var activeLocation = this.TMJS.map.getActiveLocation();
+      if (activeLocation) {
+        this.TMJS.map.zoomToMarker(activeLocation._marker);
+      }
     }
   }, {
     key: "searchNearest",
     value: function searchNearest(search) {
-      var _this4 = this;
+      var _this5 = this;
       clearTimeout(this._searchTimeoutId);
       /* reset dropdown if search is empty */
       if (!search.length) {
@@ -672,9 +1138,9 @@ var DOMManipulator = /*#__PURE__*/function () {
         if (!response.ok) throw new Error(response.status);
         return response.json();
       }).then(function (json) {
-        return _this4.updateDistanceByCandidate(json);
+        return _this5.updateDistanceByCandidate(json);
       })["catch"](function (error) {
-        return _this4.candidateError(error);
+        return _this5.candidateError(error);
       });
     }
   }, {
@@ -686,7 +1152,8 @@ var DOMManipulator = /*#__PURE__*/function () {
     key: "updateDistanceByCandidate",
     value: function updateDistanceByCandidate(json) {
       if (typeof json.candidates === 'undefined' || !json.candidates.length) {
-        this.UI.modal.querySelector('.tmjs-search-result').innerText = this.TMJS.strings.no_cities_found;
+        var sr = this._searchResultEl();
+        if (sr) sr.innerText = this.TMJS.strings.no_cities_found;
         console.log('Response had no candidates');
         return false;
       }
@@ -696,6 +1163,7 @@ var DOMManipulator = /*#__PURE__*/function () {
         lng: candidates[0].location.x
       };
       this.TMJS.map.addReferencePosition(referencePoint);
+      this._forceScrollTop = true;
       this.renderTerminalList(this.TMJS.map.addDistance(referencePoint), true);
       this.TMJS.publish('search-result', candidates[0]);
       return true;
@@ -703,9 +1171,12 @@ var DOMManipulator = /*#__PURE__*/function () {
   }, {
     key: "showSelected",
     value: function showSelected() {
+      var scrollIntoView = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : true;
       if (this.TMJS.map._activeLocation) {
         this.TMJS.map._activeLocation._li.classList.add('tmjs-active');
-        this.scrollIntoView(this.TMJS.map._activeLocation._li);
+        if (scrollIntoView) {
+          this.scrollIntoView(this.TMJS.map._activeLocation._li);
+        }
       }
     }
   }]);
@@ -784,6 +1255,12 @@ var Map = /*#__PURE__*/function () {
     this.ZOOM_SELECTED = 13;
     this.ZOOM_MAX = 18;
     this.ZOOM_MIN = 4;
+
+    // No leaflet needed in non-map (dropdown) display mode.
+    // Distance calculations and location list management work without leaflet.
+    if (!root || typeof L === 'undefined') {
+      return;
+    }
 
     /* for Icon creation */
     this.Icon = L.Icon.extend({
@@ -964,6 +1441,9 @@ var Map = /*#__PURE__*/function () {
   }, {
     key: "addReferencePosition",
     value: function addReferencePosition(coords) {
+      if (!this._map) {
+        return;
+      }
       this.removeReferencePosition();
       this._referenceMarker = this.addMarker(coords, this.TMJS.strings.your_position, 'reference');
       this._map.addLayer(this._referenceMarker);
@@ -972,6 +1452,9 @@ var Map = /*#__PURE__*/function () {
   }, {
     key: "removeReferencePosition",
     value: function removeReferencePosition() {
+      if (!this._map) {
+        return;
+      }
       if (this._referenceMarker) {
         this._map.removeLayer(this._referenceMarker);
       }
@@ -1026,6 +1509,10 @@ var Map = /*#__PURE__*/function () {
   }, {
     key: "setActiveLocation",
     value: function setActiveLocation(location) {
+      if (!this._map) {
+        this._activeLocation = location;
+        return;
+      }
       this.removeActiveMarkerAnimations();
       this._activeLocation = location;
       this.updateActiveMarkerLayer();
@@ -1034,12 +1521,18 @@ var Map = /*#__PURE__*/function () {
   }, {
     key: "zoomToActiveMarker",
     value: function zoomToActiveMarker() {
+      if (!this._map) {
+        return;
+      }
       // assume marker is in activeMarkerLayer
       this._markerLayer.zoomToShowLayer(this._activeLocation._marker);
     }
   }, {
     key: "zoomMap",
     value: function zoomMap() {
+      if (!this._map) {
+        return;
+      }
       if (this._activeLocation) {
         this._map.setView(this._activeLocation.coords, this.ZOOM_MAX);
         return;
@@ -1049,6 +1542,9 @@ var Map = /*#__PURE__*/function () {
   }, {
     key: "zoomToMarker",
     value: function zoomToMarker(marker) {
+      if (!this._map) {
+        return;
+      }
       this._markerLayer.zoomToShowLayer(marker);
     }
   }, {
@@ -1084,6 +1580,9 @@ var Map = /*#__PURE__*/function () {
   }, {
     key: "removeActiveMarkerAnimations",
     value: function removeActiveMarkerAnimations() {
+      if (!this.TMJS.dom.UI.modal) {
+        return;
+      }
       this.TMJS.dom.UI.modal.querySelectorAll('.tmjs-active-marker-hidden').forEach(function (el) {
         return el.classList.remove('tmjs-active-marker-hidden');
       });
@@ -1104,7 +1603,7 @@ var Map = /*#__PURE__*/function () {
       this.locations.forEach(function (loc) {
         loc.distance = null;
       });
-      this.locations.sort(this.sortByCity);
+      this.locations.sort(this.sortByCity.bind(this));
       return this.locations;
     }
   }, {
@@ -1241,7 +1740,7 @@ var TerminalMapping = /*#__PURE__*/function () {
     var _this = this;
     _classCallCheck(this, TerminalMapping);
     /* Terminal Mapping version */
-    this.version = '1.2.3';
+    this.version = '1.3.1';
     this._isDebug = false;
     this.prefix = '[TMJS] ';
 
@@ -1290,7 +1789,12 @@ var TerminalMapping = /*#__PURE__*/function () {
       no_pickup_points: 'No points to select',
       select_btn: 'select',
       back_to_list_btn: 'reset search',
-      no_information: 'No information'
+      no_information: 'No information',
+      // Dropdown mode strings
+      dropdown_placeholder: 'Choose a pickup point...',
+      dropdown_search_placeholder: 'Type to filter or search address',
+      find_nearest_btn: 'Find nearest',
+      no_terminals_match: 'No terminals match your filter'
     }, {
       set: function set(obj, prop, value) {
         // update DOM
@@ -1342,13 +1846,16 @@ var TerminalMapping = /*#__PURE__*/function () {
         _ref$parseLocationCom = _ref.parseLocationComment,
         parseLocationComment = _ref$parseLocationCom === void 0 ? null : _ref$parseLocationCom,
         _ref$parseMapTooltip = _ref.parseMapTooltip,
-        parseMapTooltip = _ref$parseMapTooltip === void 0 ? null : _ref$parseMapTooltip;
+        parseMapTooltip = _ref$parseMapTooltip === void 0 ? null : _ref$parseMapTooltip,
+        _ref$displayMode = _ref.displayMode,
+        displayMode = _ref$displayMode === void 0 ? 'map' : _ref$displayMode;
       this.country_code = country_code;
       this.identifier = identifier;
       this.dom.isModal = isModal;
       this.dom.hideContainer = hideContainer;
       this.dom.hideSelectBtn = hideSelectBtn;
       this.dom.cssThemeRule = cssThemeRule;
+      this.dom.displayMode = displayMode === 'dropdown' ? 'dropdown' : 'map';
       this.customTileServerUrl = customTileServerUrl;
       this.customTileAttribution = customTileAttribution;
       if (parseLocationName !== null) {
@@ -1366,9 +1873,7 @@ var TerminalMapping = /*#__PURE__*/function () {
       console.info(this.prefix + 'Initializing Terminal Mapping');
       this.dom.addOverlay();
       this.dom.addContainer(this.containerId, this.strings);
-      // load check for leaflet and plugins first
-      this.depend.loadLeaflet(function () {
-        _this2.map = new _modules_Map_js__WEBPACK_IMPORTED_MODULE_3__.Map(_this2.dom.UI.map, _this2);
+      var finishLoad = function finishLoad() {
         if (!_this2.apiMode) {
           _this2.setTerminals(terminalList);
           _this2.dom.renderTerminalList(_this2.map.locations);
@@ -1397,13 +1902,25 @@ var TerminalMapping = /*#__PURE__*/function () {
               lng: terminal.x_cord
             };
             return terminal;
-          }); //.filter(terminal => terminal.identifier == 'lp_express');
+          });
           _this2.setTerminals(terminals);
           _this2.dom.renderTerminalList(_this2.map.locations);
           console.info(_this2.prefix + 'Terminals loaded');
           _this2.dom.removeOverlay();
           _this2.publish('tmjs-ready', _this2);
         });
+      };
+      if (this.dom.displayMode === 'dropdown') {
+        // Dropdown mode does not need leaflet/map UI.
+        this.map = new _modules_Map_js__WEBPACK_IMPORTED_MODULE_3__.Map(null, this);
+        finishLoad();
+        return;
+      }
+
+      // load check for leaflet and plugins first
+      this.depend.loadLeaflet(function () {
+        _this2.map = new _modules_Map_js__WEBPACK_IMPORTED_MODULE_3__.Map(_this2.dom.UI.map, _this2);
+        finishLoad();
       });
     }
   }, {

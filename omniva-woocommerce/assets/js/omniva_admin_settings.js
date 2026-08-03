@@ -169,6 +169,7 @@ jQuery('document').ready(function($){
   };
   omniva_hide_admin_field_by_all_cb(all_keys,".omniva_both");
   omniva_show_admin_fields_by_cb("#woocommerce_omnivalt_debug_mode",".omniva_debug");
+  omniva_show_admin_fields_by_cb("#woocommerce_omnivalt_auto_generate_labels", ".omniva_auto_labels");
   omnivalt_settings.enable_api_country_methods();
   omnivalt_settings.refresh_cb_by_api_country();
   omnivalt_settings.refresh_all_cb_after_changes();
@@ -181,6 +182,10 @@ jQuery('document').ready(function($){
 
   $(document).on('change', '#woocommerce_omnivalt_debug_mode', function() {
     omniva_show_admin_fields_by_cb(this, ".omniva_debug");
+  });
+
+  $(document).on('change', '#woocommerce_omnivalt_auto_generate_labels', function() {
+    omniva_show_admin_fields_by_cb(this, ".omniva_auto_labels");
   });
 
   $(document).on('change', '#woocommerce_omnivalt_api_country', function() {
@@ -215,27 +220,28 @@ jQuery('document').ready(function($){
     omniva_show_admin_fields_by_cb(activation_field, ".omniva_" + name);
     
     var prices_blocks = $("." + key + "_enable");
+    var field;
     for (var i=0; i<prices_blocks.length; i++) {
       var block = $(prices_blocks[i]).closest('.block-prices').find('.sec-prices');
       omniva_toggle_class_by_cb(prices_blocks[i], block, "disabled", false);
-      var block = $(prices_blocks[i]).closest('.block-prices').find('.sec-other');
+      block = $(prices_blocks[i]).closest('.block-prices').find('.sec-other');
       omniva_toggle_class_by_cb(prices_blocks[i], block, "disabled", false);
     }
 
     var prices_free = $("." + key + "_enable_free");
-    for (var i=0; i<prices_free.length; i++) {
-      var field = $(prices_free[i]).closest('.prices-free').find('.price_free');
+    for (i=0; i<prices_free.length; i++) {
+      field = $(prices_free[i]).closest('.prices-free').find('.price_free');
       omniva_disable_by_cb(prices_free[i], field, "disabled", false, "readonly");
     }
 
     var pt_prices_coupon = $("." + key + "_enable_coupon");
-    for (var i=0; i<pt_prices_coupon.length; i++) {
-      var field = $(pt_prices_coupon[i]).closest('.prices-coupon').find('.price_coupon');
+    for (i=0; i<pt_prices_coupon.length; i++) {
+      field = $(pt_prices_coupon[i]).closest('.prices-coupon').find('.price_coupon');
       omniva_disable_by_cb(pt_prices_coupon[i], field, "disabled", false);
     }
 
     var all_activation_fields = [];
-    for (var i=0;i<all_keys.length;i++) {
+    for (i=0;i<all_keys.length;i++) {
       all_activation_fields.push("#woocommerce_omnivalt_method_" + all_keys[i]);
     }
     $( document ).on( 'change', '#woocommerce_omnivalt_method_' + key, function() {
@@ -247,7 +253,7 @@ jQuery('document').ready(function($){
     $( document ).on( 'change', '.' + key + '_enable', function() {
       var block = $(this).closest('.block-prices').find('.sec-prices');
       omniva_toggle_class_by_cb(this, block, "disabled", false);
-      var block = $(this).closest('.block-prices').find('.sec-other');
+      block = $(this).closest('.block-prices').find('.sec-other');
       omniva_toggle_class_by_cb(this, block, "disabled", false);
     });
 
@@ -306,7 +312,7 @@ jQuery('document').ready(function($){
     }
     if ($(checkbox).is(':checked')) {
       if (dis_when_checked) {
-        $(fields_selector).prop(prop, true);
+        $(fields_selector).prop(property, true);
       } else {
         $(fields_selector).prop(property, false);
       }
@@ -407,24 +413,24 @@ jQuery("document").ready(function($) {
     col_value.appendChild(input);
 
     col_price.classList.add("column-price");
-    var value_step = $(table).data("step2");
-    var input = document.createElement("input");
-    input.type = "number";
-    input.name = $(table).data("name") + "[" + date + "][price]";
-    input.id = $(table).data("id") + "_price_" + date;
-    input.step = value_step;
-    input.min = 0;
-    input.classList.add("input-text");
-    input.classList.add("regular-input");
-    input.value = "";
-    col_price.appendChild(input);
+    var price_step = $(table).data("step2");
+    var price_input = document.createElement("input");
+    price_input.type = "number";
+    price_input.name = $(table).data("name") + "[" + date + "][price]";
+    price_input.id = $(table).data("id") + "_price_" + date;
+    price_input.step = price_step;
+    price_input.min = 0;
+    price_input.classList.add("input-text");
+    price_input.classList.add("regular-input");
+    price_input.value = "";
+    col_price.appendChild(price_input);
 
     col_actions.classList.add("column-actions");
-    var button = document.createElement("div");
-    button.classList.add("omniva-fake-btn");
-    button.dataset.action = "remove_prices_table_row";
-    button.innerHTML = "X";
-    col_actions.appendChild(button);
+    var remove_button = document.createElement("div");
+    remove_button.classList.add("omniva-fake-btn");
+    remove_button.dataset.action = "remove_prices_table_row";
+    remove_button.innerHTML = "X";
+    col_actions.appendChild(remove_button);
 
     new_row.classList.add("row-values");
     new_row.appendChild(col_value);

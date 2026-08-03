@@ -1,5 +1,15 @@
 == Changelog ==
 
+= 1.20.13 =
+- added new settings for automatic label generation based on order status
+- added the ability to attach generated labels to admin new order emails
+- added an option to generate labels only for automatic status changes
+- added cleanup of temporary label PDF files after sending emails
+- added new translation strings for all related options
+- updated admin settings JS to toggle visibility of new label settings
+- fixed existing ESLint errors in the admin settings script
+- updated terminal-mapping library to v1.3.1
+
 = 1.20.12 =
 - fixed cronjob activation
 - improved saving of selected terminal on block-based Checkout page
