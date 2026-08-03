@@ -10,6 +10,9 @@
 - Fix existing ESLint errors in the admin settings script.
 - Add new translation strings for all related options.
 
+### Updated
+- Updated terminal-mapping library to v1.3.1
+
 ## [1.20.12]
 ### Fixed
 - fixed cronjob activation
