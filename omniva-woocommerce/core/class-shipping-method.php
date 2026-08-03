@@ -409,6 +409,34 @@ if ( ! class_exists('Omnivalt_Shipping_Method') ) {
         'description' => __('Show tracking information in WooCommerce Order emails.', 'omnivalt'),
         'default' => 'yes',
       );
+      $fields['auto_generate_labels'] = array(
+        'title' => __('Automatic label generation', 'omnivalt'),
+        'type' => 'checkbox',
+        'description' => __('Automatically generate Omniva labels when the order changes to the selected status.', 'omnivalt'),
+        'default' => 'no',
+      );
+      $fields['auto_generate_label_status'] = array(
+        'title' => __('Generate label when order changes to', 'omnivalt'),
+        'type' => 'select',
+        'options' => $order_status_options,
+        'default' => 'wc-processing',
+        'description' => __('Select the order status that triggers automatic label generation.', 'omnivalt'),
+        'class' => 'omniva_auto_labels',
+      );
+      $fields['auto_generate_only_payment'] = array(
+        'title' => __('Generate labels only on automatic status change', 'omnivalt'),
+        'type' => 'checkbox',
+        'description' => __('Generate labels only when the status changes automatically (e.g. after payment is received), not when an administrator changes it manually.', 'omnivalt'),
+        'default' => 'no',
+        'class' => 'omniva_auto_labels',
+      );
+      $fields['email_labels_to_admin'] = array(
+        'title' => __('Email labels to admin', 'omnivalt'),
+        'type' => 'checkbox',
+        'description' => __('Attach the generated label PDF to the WooCommerce new order admin email.', 'omnivalt'),
+        'default' => 'no',
+        'class' => 'omniva_auto_labels',
+      );
       $fields['hr_labels'] = array(
         'type' => 'hr',
         'title' => __('Labels', 'omnivalt'),

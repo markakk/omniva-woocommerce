@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.20.13]
+### Added
+- Introduce new settings for automatic label generation based on order status.
+- Allow attaching generated labels to the new order admin email.
+- Add an option to only auto-generate labels for automatic status changes.
+- Implement cleanup for temporary label PDF files after emailing.
+- Update admin settings JS to toggle visibility of new label settings.
+- Fix existing ESLint errors in the admin settings script.
+- Add new translation strings for all related options.
+
 ## [1.20.12]
 ### Fixed
 - fixed cronjob activation

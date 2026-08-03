@@ -561,6 +561,7 @@ class OmnivaLt_Core
     add_action('admin_head', array('OmnivaLt_Product', 'tabs_styles'));
     add_action('woocommerce_process_product_meta_simple', array('OmnivaLt_Product', 'save_options_fields'));
     add_action('woocommerce_process_product_meta_variable', array('OmnivaLt_Product', 'save_options_fields'));
+    add_action('omnivalt_cleanup_temp_label', array('OmnivaLt_Emails', 'cleanup_temp_label'));
 
     add_filter('script_loader_tag', array('OmnivaLt_Core', 'add_asyncdefer_by_handle'), 10, 2);
     add_filter('woocommerce_shipping_methods', array('OmnivaLt_Core', 'add_shipping_method'));
@@ -593,6 +594,22 @@ class OmnivaLt_Core
     
     if ( $track_info_in_emails === 'yes' ) {
       add_action('woocommerce_email_after_order_table', array('OmnivaLt_Order', 'show_tracking_link'), 10, 1);
+    }
+
+    $auto_generate_labels = (isset($settings['auto_generate_labels'])) ? $settings['auto_generate_labels'] : 'no';
+    if ( $auto_generate_labels === 'yes' ) {
+      $auto_generate_label_status = isset($settings['auto_generate_label_status']) ? $settings['auto_generate_label_status'] : 'wc-processing';
+      $order_statuses = OmnivaLt_Wc_Order::get_all_statuses();
+
+      if ( isset($order_statuses[$auto_generate_label_status]) ) {
+        $status_hook = preg_replace('/^wc-/', '', $auto_generate_label_status);
+        add_action('woocommerce_order_status_' . $status_hook, array('OmnivaLt_Labels', 'auto_generate_label'), 10, 2);
+      }
+    }
+
+    $email_labels_to_admin = (isset($settings['email_labels_to_admin'])) ? $settings['email_labels_to_admin'] : 'no';
+    if ( $email_labels_to_admin === 'yes' ) {
+      add_filter('woocommerce_email_attachments', array('OmnivaLt_Emails', 'attach_label_to_new_order_email'), 10, 3);
     }
   }
 
