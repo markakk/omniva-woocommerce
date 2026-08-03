@@ -2,13 +2,20 @@
 
 ## [1.20.13]
 ### Added
-- Introduce new settings for automatic label generation based on order status.
-- Allow attaching generated labels to the new order admin email.
-- Add an option to only auto-generate labels for automatic status changes.
-- Implement cleanup for temporary label PDF files after emailing.
-- Update admin settings JS to toggle visibility of new label settings.
-- Fix existing ESLint errors in the admin settings script.
-- Add new translation strings for all related options.
+- added new settings for automatic label generation based on order status
+- added the ability to attach generated labels to admin new order emails
+- added an option to generate labels only for automatic status changes
+- added cleanup of temporary label PDF files after sending emails
+- added new translation strings for all related options
+
+### Improved
+- updated admin settings JS to toggle visibility of new label settings
+
+### Fixed
+- fixed existing ESLint errors in the admin settings script
+
+### Updated
+- updated terminal-mapping library to v1.3.1
 
 ## [1.20.12]
 ### Fixed
